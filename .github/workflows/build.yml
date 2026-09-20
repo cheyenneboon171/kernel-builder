@@ -1,86 +1,58 @@
-name: Build ReSukiSU Kernel for RM6785
+name: Build Realme 6 ReSukiSU Kernel
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    name: Compile Kernel with ReSukiSU
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
     steps:
-      - name: Install dependencies
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc curl git zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev libarchive-tools
+          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev zip curl git
 
-      - name: Clone Proton Clang
+      - name: Clone Proton Clang Toolchain
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Clone Kernel Source (Miku Elohim) at Stable May 20 Commit
+      - name: Clone Kernel Source
         run: |
-          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git kernel
+          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
           cd kernel
-          # Переключаемся ровно на то рабочее майское ядро!
-          git checkout a9ccd375e7fe41aa81cebe24be599523826a14a9
+          # Откатываемся на стабильную точку 3 июля с готовыми патчами ReSukiSU
+          git checkout 1f6af2a2542bf33bde0f239960cd4bcac684567b
 
-      - name: Setup AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
-          sed -i 's/supported.versions=.*/supported.versions=/' AnyKernel3/anykernel.sh
-
-      - name: Integrate Latest ReSukiSU
+      - name: Setup ReSukiSU & SuSFS Stubs
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
           echo -e '#ifndef SUSFS_NO_SU_STUBS\n#define SUSFS_NO_SU_STUBS\nstatic inline bool susfs_is_current_proc_no_su(void) { return false; }\nstatic inline void susfs_set_current_proc_no_su(void) {}\nstatic inline void susfs_clear_current_proc_no_su(void) {}\nstatic inline void susfs_set_current_proc_umounted_for_zygote_next(void) {}\n#endif' >> include/linux/susfs_def.h
 
-      - name: Build Kernel
+      - name: Clone AnyKernel3 & Patch for Android 17
+        run: |
+          git clone https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
+          # Убираем ограничение версий Android, чтобы AnyKernel не ругался на Android 17:
+          sed -i 's/supported.versions=.*/supported.versions=/' AnyKernel3/anykernel.sh
+
+      - name: Build Kernel (Image.gz)
         run: |
           cd kernel
-          export PATH="${GITHUB_WORKSPACE}/clang/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export KBUILD_BUILD_USER="Elohim"
-          export KBUILD_BUILD_HOST="Miku"
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 RM6785_defconfig
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 Image.gz
 
-          make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 RM6785_defconfig
-
-          # Собираем ядро с приклеенным DTB
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            LD=ld.lld \
-            AR=llvm-ar \
-            NM=llvm-nm \
-            OBJCOPY=llvm-objcopy \
-            OBJDUMP=llvm-objdump \
-            READELF=llvm-readelf \
-            STRIP=llvm-strip \
-            LLVM=1 \
-            LLVM_IAS=1 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            Image.gz-dtb
-
-      - name: Package AnyKernel3 Flashable ZIP
+      - name: Package AnyKernel3 Zip
         run: |
-          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
-            rm -f AnyKernel3/Image.gz*
-            cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz
-            echo "Successfully verified and packaged Image.gz-dtb!"
-          else
-            echo "CRITICAL ERROR: Image.gz-dtb was not generated!"
-            exit 1
-          fi
-
+          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
           cd AnyKernel3
-          zip -r9 ../Miku-RM6785-ReSukiSU-Latest.zip * -x .git README.md
+          zip -r9 ../Realme6-Android17-ReSukiSU.zip * -x .git README.md
 
-      - name: Upload Flashable Kernel
+      - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-ReSukiSU-Latest
-          path: Miku-RM6785-ReSukiSU-Latest.zip
-          retention-days: 7
+          name: Realme6-Android17-ReSukiSU
+          path: Realme6-Android17-ReSukiSU.zip
