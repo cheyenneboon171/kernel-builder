@@ -1,4 +1,4 @@
-name: Build Realme 6 ReSukiSU Kernel (September Neutron Config)
+name: Build Realme 6 ReSukiSU (AOSP Clang 20 Stable)
 
 on:
   workflow_dispatch:
@@ -16,21 +16,20 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libssl-dev \
             gcc clang lld libncurses5-dev git zip unzip \
-            curl wget libelf-dev libfdt-dev zstd
+            curl wget libelf-dev libfdt-dev python3
 
-      - name: Install Neutron Clang Toolchain
+      - name: Clone AOSP Clang Toolchain (r547379 - Clang 20)
         run: |
-          mkdir -p "$HOME/toolchains/neutron-clang"
-          cd "$HOME/toolchains/neutron-clang"
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          chmod +x antman
-          ./antman -S
+          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
 
-      - name: Clone Kernel Source
+      - name: Clone Kernel Source (Stable July 3 Base)
         run: |
-          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
+          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
+          cd kernel
+          # Откат до стабильной точки 3 июля (до багов Mali и Maple IO)
+          git checkout 1f6af2a2542bf33bde0f239960cd4bcac684567b
 
-      - name: Setup ReSukiSU & SuSFS
+      - name: Setup ReSukiSU & SuSFS Stubs
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
@@ -40,10 +39,10 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
 
-      - name: Build Kernel (Neutron Clang)
+      - name: Build Kernel (AOSP Clang 20)
         run: |
           cd kernel
-          export PATH="$HOME/toolchains/neutron-clang/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 RM6785_defconfig
           make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
@@ -51,10 +50,10 @@ jobs:
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-Neutron-ReSukiSU.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-AOSP20-ReSukiSU.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-Neutron-ReSukiSU
-          path: Miku-RM6785-Neutron-ReSukiSU.zip
+          name: Miku-RM6785-AOSP20-ReSukiSU
+          path: Miku-RM6785-AOSP20-ReSukiSU.zip
