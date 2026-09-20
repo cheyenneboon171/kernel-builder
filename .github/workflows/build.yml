@@ -25,6 +25,8 @@ jobs:
       - name: Setup AnyKernel3
         run: |
           git clone --depth=1 https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
+          # Снимаем любые ограничения по версии Android
+          sed -i 's/supported.versions=.*/supported.versions=/' AnyKernel3/anykernel.sh
 
       - name: Integrate Latest ReSukiSU
         run: |
@@ -43,6 +45,7 @@ jobs:
 
           make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 RM6785_defconfig
 
+          # Собираем ядро строго с приклеенным деревом устройств DTB
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -57,15 +60,20 @@ jobs:
             LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
-            Image.gz
+            Image.gz-dtb
 
       - name: Package AnyKernel3 Flashable ZIP
         run: |
-          if [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          elif [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz
+          # Проверяем наличие Image.gz-dtb и копируем именно его
+          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
+            rm -f AnyKernel3/Image.gz*
+            cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz
+            echo "Successfully verified and packaged Image.gz-dtb!"
+          else
+            echo "CRITICAL ERROR: Image.gz-dtb was not generated!"
+            exit 1
           fi
+
           cd AnyKernel3
           zip -r9 ../Miku-RM6785-ReSukiSU-Latest.zip * -x .git README.md
 
