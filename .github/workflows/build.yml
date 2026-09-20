@@ -18,14 +18,16 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 
-      - name: Clone Kernel Source (Miku Elohim)
+      - name: Clone Kernel Source (Miku Elohim) at Stable May 20 Commit
         run: |
-          git clone --depth=1 -b backup-miku https://github.com/elohim-etz/android_kernel_realme_mt6785.git kernel
+          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git kernel
+          cd kernel
+          # Переключаемся ровно на то рабочее майское ядро!
+          git checkout a9ccd375e7fe41aa81cebe24be599523826a14a9
 
       - name: Setup AnyKernel3
         run: |
           git clone --depth=1 https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
-          # Снимаем любые ограничения по версии Android
           sed -i 's/supported.versions=.*/supported.versions=/' AnyKernel3/anykernel.sh
 
       - name: Integrate Latest ReSukiSU
@@ -45,7 +47,7 @@ jobs:
 
           make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 RM6785_defconfig
 
-          # Собираем ядро строго с приклеенным деревом устройств DTB
+          # Собираем ядро с приклеенным DTB
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
@@ -64,7 +66,6 @@ jobs:
 
       - name: Package AnyKernel3 Flashable ZIP
         run: |
-          # Проверяем наличие Image.gz-dtb и копируем именно его
           if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
             rm -f AnyKernel3/Image.gz*
             cp -f kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz
