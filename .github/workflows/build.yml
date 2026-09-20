@@ -1,4 +1,4 @@
-name: Build Realme 6 ReSukiSU Kernel
+name: Build Realme 6 ReSukiSU Kernel (September Neutron Config)
 
 on:
   workflow_dispatch:
@@ -10,49 +10,51 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Set up Build Environment
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev zip curl git
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libssl-dev \
+            gcc clang lld libncurses5-dev git zip unzip \
+            curl wget libelf-dev libfdt-dev zstd
 
-      - name: Clone Proton Clang Toolchain
+      - name: Install Neutron Clang Toolchain
         run: |
-          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+          mkdir -p "$HOME/toolchains/neutron-clang"
+          cd "$HOME/toolchains/neutron-clang"
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          chmod +x antman
+          ./antman -S
 
       - name: Clone Kernel Source
         run: |
-          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
-          cd kernel
-          # Откатываемся на стабильную точку 3 июля с готовыми патчами ReSukiSU
-          git checkout 1f6af2a2542bf33bde0f239960cd4bcac684567b
+          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
 
-      - name: Setup ReSukiSU & SuSFS Stubs
+      - name: Setup ReSukiSU & SuSFS
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
           echo -e '#ifndef SUSFS_NO_SU_STUBS\n#define SUSFS_NO_SU_STUBS\nstatic inline bool susfs_is_current_proc_no_su(void) { return false; }\nstatic inline void susfs_set_current_proc_no_su(void) {}\nstatic inline void susfs_clear_current_proc_no_su(void) {}\nstatic inline void susfs_set_current_proc_umounted_for_zygote_next(void) {}\n#endif' >> include/linux/susfs_def.h
 
-      - name: Clone AnyKernel3 & Patch for Android 17
+      - name: Clone Official Elohim AnyKernel3
         run: |
-          git clone https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
-          # Убираем ограничение версий Android, чтобы AnyKernel не ругался на Android 17:
-          sed -i 's/supported.versions=.*/supported.versions=/' AnyKernel3/anykernel.sh
+          git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
 
-      - name: Build Kernel (Image.gz)
+      - name: Build Kernel (Neutron Clang)
         run: |
           cd kernel
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 RM6785_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LD=ld.lld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1 Image.gz
+          export PATH="$HOME/toolchains/neutron-clang/bin:$PATH"
+          make O=out ARCH=arm64 RM6785_defconfig
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
-          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
-          cd AnyKernel3
-          zip -r9 ../Realme6-Android17-ReSukiSU.zip * -x .git README.md
+          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
+          cd AnyKernel
+          zip -r9 ../Miku-RM6785-Neutron-ReSukiSU.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Realme6-Android17-ReSukiSU
-          path: Realme6-Android17-ReSukiSU.zip
+          name: Miku-RM6785-Neutron-ReSukiSU
+          path: Miku-RM6785-Neutron-ReSukiSU.zip
