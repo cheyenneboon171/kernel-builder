@@ -29,7 +29,6 @@ jobs:
       - name: Integrate Latest ReSukiSU
         run: |
           cd kernel
-          # Устанавливаем самый свежий ReSukiSU
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
 
       - name: Build Kernel
@@ -41,27 +40,32 @@ jobs:
           export KBUILD_BUILD_USER="Elohim"
           export KBUILD_BUILD_HOST="Miku"
 
-          # Генерация конфигурации
-          make O=out ARCH=arm64 RM6785_defconfig
+          # Генерация конфигурации с флагами LLVM
+          make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 RM6785_defconfig
 
-          # Сборка ядра
+          # Сборка ядра с lld линковщиком
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LD=ld.lld \
             AR=llvm-ar \
             NM=llvm-nm \
             OBJCOPY=llvm-objcopy \
             OBJDUMP=llvm-objdump \
-            STRIP=llvm-strip
+            READELF=llvm-readelf \
+            STRIP=llvm-strip \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            Image.gz
 
       - name: Package AnyKernel3 Flashable ZIP
         run: |
-          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-          elif [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
-            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+          if [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/Image.gz
+          elif [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/Image.gz
           fi
           cd AnyKernel3
           zip -r9 ../Miku-RM6785-ReSukiSU-Latest.zip * -x .git README.md
