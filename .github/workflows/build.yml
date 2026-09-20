@@ -12,7 +12,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc curl git zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev libarchive-tools python3
+          sudo apt-get install -y build-essential bc curl git zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev libarchive-tools
 
       - name: Clone Proton Clang
         run: |
@@ -30,36 +30,7 @@ jobs:
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-
-          # Добавляем недостающие функции SuSFS в susfs_def.h
-          python3 -c '
-with open("include/linux/susfs_def.h", "r") as f:
-    c = f.read()
-patch = """
-#ifndef TIF_PROC_NO_SU
-#define TIF_PROC_NO_SU 34
-#endif
-#ifndef TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT
-#define TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT 35
-#endif
-
-static inline bool susfs_is_current_proc_no_su(void) {
-    return test_ti_thread_flag(&current->thread_info, TIF_PROC_NO_SU);
-}
-static inline void susfs_set_current_proc_no_su(void) {
-    set_ti_thread_flag(&current->thread_info, TIF_PROC_NO_SU);
-}
-static inline void susfs_clear_current_proc_no_su(void) {
-    clear_ti_thread_flag(&current->thread_info, TIF_PROC_NO_SU);
-}
-static inline void susfs_set_current_proc_umounted_for_zygote_next(void) {
-    set_ti_thread_flag(&current->thread_info, TIF_PROC_UMOUNTED_FOR_ZYGOTE_NEXT);
-}
-"""
-c = c.replace("#endif // #ifndef KSU_SUSFS_DEF_H", patch + "\n#endif // #ifndef KSU_SUSFS_DEF_H")
-with open("include/linux/susfs_def.h", "w") as f:
-    f.write(c)
-'
+          echo -e '#ifndef SUSFS_NO_SU_STUBS\n#define SUSFS_NO_SU_STUBS\nstatic inline bool susfs_is_current_proc_no_su(void) { return false; }\nstatic inline void susfs_set_current_proc_no_su(void) {}\nstatic inline void susfs_clear_current_proc_no_su(void) {}\nstatic inline void susfs_set_current_proc_umounted_for_zygote_next(void) {}\n#endif' >> include/linux/susfs_def.h
 
       - name: Build Kernel
         run: |
@@ -70,10 +41,8 @@ with open("include/linux/susfs_def.h", "w") as f:
           export KBUILD_BUILD_USER="Elohim"
           export KBUILD_BUILD_HOST="Miku"
 
-          # Генерация конфигурации с флагами LLVM
           make O=out ARCH=arm64 CC=clang LD=ld.lld LLVM=1 LLVM_IAS=1 RM6785_defconfig
 
-          # Сборка ядра с lld линковщиком
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
