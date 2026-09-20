@@ -1,0 +1,74 @@
+name: Build ReSukiSU Kernel for RM6785
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile Kernel with ReSukiSU
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc curl git zip gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev libfl-dev libarchive-tools
+
+      - name: Clone Proton Clang
+        run: |
+          git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
+
+      - name: Clone Kernel Source (Miku Elohim)
+        run: |
+          git clone --depth=1 -b backup-miku https://github.com/elohim-etz/android_kernel_realme_mt6785.git kernel
+
+      - name: Setup AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/KitsuNeko2001/AnyKernel-RM6785.git AnyKernel3
+
+      - name: Integrate Latest ReSukiSU
+        run: |
+          cd kernel
+          # Устанавливаем самый свежий ReSukiSU
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
+
+      - name: Build Kernel
+        run: |
+          cd kernel
+          export PATH="${GITHUB_WORKSPACE}/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="Elohim"
+          export KBUILD_BUILD_HOST="Miku"
+
+          # Генерация конфигурации
+          make O=out ARCH=arm64 RM6785_defconfig
+
+          # Сборка ядра
+          make -j$(nproc --all) O=out \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            AR=llvm-ar \
+            NM=llvm-nm \
+            OBJCOPY=llvm-objcopy \
+            OBJDUMP=llvm-objdump \
+            STRIP=llvm-strip
+
+      - name: Package AnyKernel3 Flashable ZIP
+        run: |
+          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
+            cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+          fi
+          cd AnyKernel3
+          zip -r9 ../Miku-RM6785-ReSukiSU-Latest.zip * -x .git README.md
+
+      - name: Upload Flashable Kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miku-RM6785-ReSukiSU-Latest
+          path: Miku-RM6785-ReSukiSU-Latest.zip
+          retention-days: 7
