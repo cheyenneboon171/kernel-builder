@@ -1,4 +1,4 @@
-name: Build Realme 6 ReSukiSU (AOSP Clang 20 Stable)
+name: Build Realme 6 Kernel (Lineage-23.2 SuSFS 2.3 Official)
 
 on:
   workflow_dispatch:
@@ -22,24 +22,20 @@ jobs:
         run: |
           git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
 
-      - name: Clone Kernel Source (Stable July 3 Base)
+      - name: Clone Kernel Source (Lineage-23.2 - Sept 25)
         run: |
-          git clone https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
-          cd kernel
-          # Откат до стабильной точки 3 июля (до багов Mali и Maple IO)
-          git checkout 1f6af2a2542bf33bde0f239960cd4bcac684567b
+          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-23.2 kernel
 
-      - name: Setup ReSukiSU & SuSFS Stubs
+      - name: Setup SukiSU-Ultra Driver
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s main
-          echo -e '#ifndef SUSFS_NO_SU_STUBS\n#define SUSFS_NO_SU_STUBS\nstatic inline bool susfs_is_current_proc_no_su(void) { return false; }\nstatic inline void susfs_set_current_proc_no_su(void) {}\nstatic inline void susfs_clear_current_proc_no_su(void) {}\nstatic inline void susfs_set_current_proc_umounted_for_zygote_next(void) {}\n#endif' >> include/linux/susfs_def.h
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
 
       - name: Clone Official Elohim AnyKernel3
         run: |
           git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
 
-      - name: Build Kernel (AOSP Clang 20)
+      - name: Build Kernel (Image.gz)
         run: |
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
@@ -50,10 +46,10 @@ jobs:
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-AOSP20-ReSukiSU.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-SuSFS23-SukiSU.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-AOSP20-ReSukiSU
-          path: Miku-RM6785-AOSP20-ReSukiSU.zip
+          name: Miku-RM6785-SuSFS23-SukiSU
+          path: Miku-RM6785-SuSFS23-SukiSU.zip
