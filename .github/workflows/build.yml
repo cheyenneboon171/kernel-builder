@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-23.2 SuSFS 2.3 Official)
+name: Build Realme 6 Kernel (Lineage-23.2 SuSFS 2.3 Official ReSukiSU)
 
 on:
   workflow_dispatch:
@@ -26,10 +26,15 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-23.2 kernel
 
-      - name: Setup SukiSU-Ultra Driver
+      - name: Setup Official ReSukiSU Driver (Latest)
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s main
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+
+      - name: Patch SECCOMP for Android 17 Syscall 142
+        run: |
+          cd kernel
+          sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
       - name: Clone Official Elohim AnyKernel3
         run: |
@@ -46,10 +51,10 @@ jobs:
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-SuSFS23-SukiSU.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-SuSFS23-ReSukiSU-Latest.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-SuSFS23-SukiSU
-          path: Miku-RM6785-SuSFS23-SukiSU.zip
+          name: Miku-RM6785-SuSFS23-ReSukiSU-Latest
+          path: Miku-RM6785-SuSFS23-ReSukiSU-Latest.zip
