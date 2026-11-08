@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-24.0 BBR + ReSukiSU)
+name: Build Realme 6 Kernel (Lineage-24.0 ReSukiSU)
 
 on:
   workflow_dispatch:
@@ -36,16 +36,6 @@ jobs:
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Clean Defconfig Patch (BBR & FQ)
-        run: |
-          cd kernel
-          # Включаем BBR и FQ Pacing без конфликта с BIC
-          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> arch/arm64/configs/RM6785_defconfig
-          sed -i 's/CONFIG_DEFAULT_BIC=y/CONFIG_DEFAULT_BBR=y/' arch/arm64/configs/RM6785_defconfig
-          sed -i 's/CONFIG_DEFAULT_TCP_CONG="bic"/CONFIG_DEFAULT_TCP_CONG="bbr"/' arch/arm64/configs/RM6785_defconfig
-
       - name: Clone Official Elohim AnyKernel3
         run: |
           git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
@@ -60,13 +50,13 @@ jobs:
       - name: Package AnyKernel3 Zip
         run: |
           IMG=$(find kernel -name "Image.gz" | head -n 1)
-          echo "Найден скомпилированный файл ядра: $IMG"
+          echo "Найден Image.gz: $IMG"
           cp -f "$IMG" AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x ".git/*" -x "README.md"
+          zip -r9 ../Miku-RM6785-Lineage24-ReSukiSU.zip * -x ".git/*" -x "README.md"
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-BBR-ReSukiSU
-          path: Miku-RM6785-BBR-ReSukiSU.zip
+          name: Miku-RM6785-Lineage24-ReSukiSU
+          path: Miku-RM6785-Lineage24-ReSukiSU.zip
