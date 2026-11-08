@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-24.0 BBR + ZSTD + SuSFS Ultimate)
+name: Build Realme 6 Kernel (Lineage-24.0 BBR + ZSTD + ReSukiSU)
 
 on:
   workflow_dispatch:
@@ -36,42 +36,18 @@ jobs:
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Deep Performance & Stealth Optimization
+      - name: Inject BBR, ZSTD & Optimizations into Defconfig
         run: |
           cd kernel
-          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make O=out ARCH=arm64 RM6785_defconfig
-
-          # === 1. БРОНЯ СКРЫТНОСТИ SuSFS ===
-          scripts/config --file out/.config --enable CONFIG_KSU
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_PATH
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_MOUNT
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_KSTAT
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SPOOF_UNAME
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_OPEN_REDIRECT
-          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_MAP
-
-          # === 2. СЕТЬ И ИНТЕРНЕТ (BBR + FQ PACING) ===
-          scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
-          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ
-          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
-          scripts/config --file out/.config --enable CONFIG_DEFAULT_BBR
-          scripts/config --file out/.config --disable CONFIG_DEFAULT_BIC
-          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
-
-          # === 3. СЖАТИЕ ОЗУ ZSTD ===
-          scripts/config --file out/.config --enable CONFIG_CRYPTO_ZSTD
-          scripts/config --file out/.config --enable CONFIG_ZRAM_DEF_COMP_ZSTD
-          scripts/config --file out/.config --disable CONFIG_ZRAM_DEF_COMP_LZ4
-          scripts/config --file out/.config --set-str CONFIG_ZRAM_DEF_COMP "zstd"
-
-          # === 4. ОЧИСТКА ОТЛАДКИ И СПАМА ===
-          scripts/config --file out/.config --disable CONFIG_DEBUG_INFO
-          scripts/config --file out/.config --disable CONFIG_FTRACE
-          scripts/config --file out/.config --disable CONFIG_OPLUS_FEATURE_SELINUX_CONTROL_LOG
+          # Добавляем BBR и FQ Pacing прямо в дефконфиг
+          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
+          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/RM6785_defconfig
+          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> arch/arm64/configs/RM6785_defconfig
+          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/RM6785_defconfig
+          # Добавляем современное сжатие ОЗУ ZSTD
+          echo "CONFIG_CRYPTO_ZSTD=y" >> arch/arm64/configs/RM6785_defconfig
+          echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> arch/arm64/configs/RM6785_defconfig
+          echo 'CONFIG_ZRAM_DEF_COMP="zstd"' >> arch/arm64/configs/RM6785_defconfig
 
       - name: Clone Official Elohim AnyKernel3
         run: |
@@ -81,16 +57,17 @@ jobs:
         run: |
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make O=out ARCH=arm64 RM6785_defconfig
           make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-Ultra-BBR-ZSTD-SuSFS.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-BBR-ZSTD-BakaSU.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-Ultra-BBR-ZSTD-SuSFS
-          path: Miku-RM6785-Ultra-BBR-ZSTD-SuSFS.zip
+          name: Miku-RM6785-BBR-ZSTD-BakaSU
+          path: Miku-RM6785-BBR-ZSTD-BakaSU.zip
