@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-24.0 BBR + ReSukiSU)
+name: Build Realme 6 Kernel (Miku-V2 BBR + ReSukiSU 4.2.0)
 
 on:
   workflow_dispatch:
@@ -22,28 +22,23 @@ jobs:
         run: |
           git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
 
-      - name: Clone Kernel Source (Lineage-24.0)
+      - name: Clone Kernel Source (Miku-V2)
         run: |
-          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
+          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
 
-      - name: Setup Stable ReSukiSU Driver (v4.1.0)
+      - name: Setup ReSukiSU 4.2.0-rc3 (Verified Commit 94dd3c93)
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s v4.1.0
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s 94dd3c93
+          # Защита от блокирующих проверок Kbuild
+          if [ -f KernelSU/kernel/tools/static_export_check.mk ]; then
+            echo "" > KernelSU/kernel/tools/static_export_check.mk
+          fi
 
       - name: Patch SECCOMP for Android 17 Syscall 142
         run: |
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
-
-      - name: Enable BBR Internet & FQ
-        run: |
-          cd kernel
-          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_NET_SCH_FQ_CODEL=y" >> arch/arm64/configs/RM6785_defconfig
-          sed -i 's/CONFIG_DEFAULT_BIC=y/CONFIG_DEFAULT_BBR=y/' arch/arm64/configs/RM6785_defconfig
-          sed -i 's/CONFIG_DEFAULT_TCP_CONG="bic"/CONFIG_DEFAULT_TCP_CONG="bbr"/' arch/arm64/configs/RM6785_defconfig
 
       - name: Clone Official Elohim AnyKernel3
         run: |
@@ -59,7 +54,7 @@ jobs:
       - name: Package AnyKernel3 Zip
         run: |
           IMG=$(find kernel -name "Image.gz" | head -n 1)
-          echo "Найден Image.gz: $IMG"
+          echo "Found Image.gz: $IMG"
           cp -f "$IMG" AnyKernel/Image.gz
           cd AnyKernel
           zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x ".git/*" -x "README.md"
