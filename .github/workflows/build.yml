@@ -26,26 +26,19 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
 
-      - name: Setup Official ReSukiSU Driver (Latest)
+      - name: Setup Stable ReSukiSU Driver (v4.1.0)
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
-          # Отключаем ошибочную проверку BakaSU (upstream bug #650)
-          echo "" > KernelSU/kernel/tools/static_export_check.mk
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s v4.1.0
 
       - name: Patch SECCOMP for Android 17 Syscall 142
         run: |
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Enable KALLSYMS & BBR Internet
+      - name: Enable BBR Internet & FQ
         run: |
           cd kernel
-          # Включаем KALLSYMS_ALL
-          sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/' arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/RM6785_defconfig
-
-          # Включаем BBR и FQ Pacing
           echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
           echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/RM6785_defconfig
           echo "CONFIG_NET_SCH_FQ_CODEL=y" >> arch/arm64/configs/RM6785_defconfig
