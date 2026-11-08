@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-24.0 Neutron + BBR + ZSTD + SuSFS Ultimate)
+name: Build Realme 6 Kernel (Lineage-24.0 BBR + ZSTD + SuSFS Ultimate)
 
 on:
   workflow_dispatch:
@@ -16,15 +16,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libssl-dev \
             gcc clang lld libncurses5-dev git zip unzip \
-            curl wget libelf-dev libfdt-dev python3 libncurses6
+            curl wget libelf-dev libfdt-dev python3
 
-      - name: Setup Neutron Clang Toolchain (Latest with Polly)
+      - name: Clone AOSP Clang Toolchain (r547379 - Clang 20)
         run: |
-          mkdir -p clang
-          cd clang
-          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
-          bash antman -S=latest
-          bash antman --patch=glibc
+          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
 
       - name: Clone Kernel Source (Lineage-24.0)
         run: |
@@ -46,7 +42,7 @@ jobs:
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 RM6785_defconfig
 
-          # === 1. ПОЛНАЯ БРОНЯ СКРЫТНОСТИ SuSFS ===
+          # === 1. БРОНЯ СКРЫТНОСТИ SuSFS ===
           scripts/config --file out/.config --enable CONFIG_KSU
           scripts/config --file out/.config --enable CONFIG_KSU_SUSFS
           scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_PATH
@@ -62,35 +58,30 @@ jobs:
           scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
           scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ
           scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
-          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
           scripts/config --file out/.config --enable CONFIG_DEFAULT_BBR
+          scripts/config --file out/.config --disable CONFIG_DEFAULT_BIC
+          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
 
-          # === 3. МАКСИМАЛЬНОЕ СЖАТИЕ ОЗУ (ZRAM ZSTD) ===
+          # === 3. СЖАТИЕ ОЗУ ZSTD ===
           scripts/config --file out/.config --enable CONFIG_CRYPTO_ZSTD
           scripts/config --file out/.config --enable CONFIG_ZRAM_DEF_COMP_ZSTD
+          scripts/config --file out/.config --disable CONFIG_ZRAM_DEF_COMP_LZ4
           scripts/config --file out/.config --set-str CONFIG_ZRAM_DEF_COMP "zstd"
 
-          # === 4. УСКОРЕНИЕ UFS 2.1 НАКОПИТЕЛЯ ===
-          scripts/config --file out/.config --set-str CONFIG_DEFAULT_IOSCHED "deadline"
-
-          # === 5. ВЫРЕЗАНИЕ ОТЛАДКИ И ЛОГГИНГА (МЕНЬШЕ НАГРЕВ) ===
+          # === 4. ОЧИСТКА ОТЛАДКИ И СПАМА ===
           scripts/config --file out/.config --disable CONFIG_DEBUG_INFO
-          scripts/config --file out/.config --disable CONFIG_DEBUG_KERNEL
           scripts/config --file out/.config --disable CONFIG_FTRACE
-          scripts/config --file out/.config --disable CONFIG_SCHED_DEBUG
-          scripts/config --file out/.config --disable CONFIG_SCHEDSTATS
-          scripts/config --file out/.config --disable CONFIG_MAGIC_SYSRQ
           scripts/config --file out/.config --disable CONFIG_OPLUS_FEATURE_SELINUX_CONTROL_LOG
 
       - name: Clone Official Elohim AnyKernel3
         run: |
           git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
 
-      - name: Build Kernel with Neutron Toolchain
+      - name: Build Kernel (Image.gz)
         run: |
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
