@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-23.2 SuSFS 2.3 Official ReSukiSU)
+name: Build Realme 6 Kernel (Lineage-24.0 Neutron + BBR + ZSTD + SuSFS Ultimate)
 
 on:
   workflow_dispatch:
@@ -16,45 +16,90 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libssl-dev \
             gcc clang lld libncurses5-dev git zip unzip \
-            curl wget libelf-dev libfdt-dev python3
+            curl wget libelf-dev libfdt-dev python3 libncurses6
 
-      - name: Clone AOSP Clang Toolchain (r547379 - Clang 20)
+      - name: Setup Neutron Clang Toolchain (Latest with Polly)
         run: |
-          git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
+          mkdir -p clang
+          cd clang
+          curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+          bash antman -S=latest
+          bash antman --patch=glibc
 
-      - name: Clone Kernel Source (Lineage-23.2 - Sept 25)
+      - name: Clone Kernel Source (Lineage-24.0)
         run: |
-          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-23.2 kernel
+          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
 
-      - name: Setup Official ReSukiSU Driver (Latest)
+      - name: Setup Latest Baka-SU (ReSukiSU) Driver
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
 
       - name: Patch SECCOMP for Android 17 Syscall 142
         run: |
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Clone Official Elohim AnyKernel3
-        run: |
-          git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
-
-      - name: Build Kernel (Image.gz)
+      - name: Deep Performance & Stealth Optimization
         run: |
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 RM6785_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
+
+          # === 1. ПОЛНАЯ БРОНЯ СКРЫТНОСТИ SuSFS ===
+          scripts/config --file out/.config --enable CONFIG_KSU
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_PATH
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_MOUNT
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_KSTAT
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SPOOF_UNAME
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_OPEN_REDIRECT
+          scripts/config --file out/.config --enable CONFIG_KSU_SUSFS_SUS_MAP
+
+          # === 2. СЕТЬ И ИНТЕРНЕТ (BBR + FQ PACING) ===
+          scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
+          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ
+          scripts/config --file out/.config --enable CONFIG_NET_SCH_FQ_CODEL
+          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          scripts/config --file out/.config --enable CONFIG_DEFAULT_BBR
+
+          # === 3. МАКСИМАЛЬНОЕ СЖАТИЕ ОЗУ (ZRAM ZSTD) ===
+          scripts/config --file out/.config --enable CONFIG_CRYPTO_ZSTD
+          scripts/config --file out/.config --enable CONFIG_ZRAM_DEF_COMP_ZSTD
+          scripts/config --file out/.config --set-str CONFIG_ZRAM_DEF_COMP "zstd"
+
+          # === 4. УСКОРЕНИЕ UFS 2.1 НАКОПИТЕЛЯ ===
+          scripts/config --file out/.config --set-str CONFIG_DEFAULT_IOSCHED "deadline"
+
+          # === 5. ВЫРЕЗАНИЕ ОТЛАДКИ И ЛОГГИНГА (МЕНЬШЕ НАГРЕВ) ===
+          scripts/config --file out/.config --disable CONFIG_DEBUG_INFO
+          scripts/config --file out/.config --disable CONFIG_DEBUG_KERNEL
+          scripts/config --file out/.config --disable CONFIG_FTRACE
+          scripts/config --file out/.config --disable CONFIG_SCHED_DEBUG
+          scripts/config --file out/.config --disable CONFIG_SCHEDSTATS
+          scripts/config --file out/.config --disable CONFIG_MAGIC_SYSRQ
+          scripts/config --file out/.config --disable CONFIG_OPLUS_FEATURE_SELINUX_CONTROL_LOG
+
+      - name: Clone Official Elohim AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
+
+      - name: Build Kernel with Neutron Toolchain
+        run: |
+          cd kernel
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 LLVM_IAS=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-SuSFS23-ReSukiSU-Latest.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-Ultra-BBR-ZSTD-SuSFS.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-SuSFS23-ReSukiSU-Latest
-          path: Miku-RM6785-SuSFS23-ReSukiSU-Latest.zip
+          name: Miku-RM6785-Ultra-BBR-ZSTD-SuSFS
+          path: Miku-RM6785-Ultra-BBR-ZSTD-SuSFS.zip
