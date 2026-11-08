@@ -1,4 +1,4 @@
-name: "Build Realme 6 Kernel"
+name: "Build Realme 6 Kernel (Lineage-24.0 BakaSU + BBR)"
 
 on:
   workflow_dispatch:
@@ -16,52 +16,66 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential bc bison flex libssl-dev \
             gcc clang lld libncurses5-dev git zip unzip \
-            curl wget libelf-dev libfdt-dev python3
+            curl wget libelf-dev libfdt-dev python3 ccache
 
-      - name: Clone AOSP Clang Toolchain (r547379 - Clang 20)
+      - name: Clone AOSP Clang Toolchain (r547379)
         run: |
           git clone --depth=1 https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git clang
 
-      - name: Clone Kernel Source (Miku-V2)
+      - name: Clone Official Elohim Kernel Tree (lineage-24.0)
         run: |
-          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b backup-miku kernel
+          git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
 
-      - name: Setup ReSukiSU 4.2.0-rc3 (Verified Commit 94dd3c93)
+      - name: Setup BakaSU Root (Latest main)
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -s 94dd3c93
-          if [ -f KernelSU/kernel/tools/static_export_check.mk ]; then
-            echo "" > KernelSU/kernel/tools/static_export_check.mk
-          fi
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -s main
 
-      - name: Upgrade to Full SuSFS 2.3.0 and Patch Android 17 Syscall
+      - name: Configure Defconfig & Enable TCP BBR
         run: |
           cd kernel
-          sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
-          sed -i 's/"v2.2.0"/"v2.3.0"/' include/linux/susfs.h
-          printf '\nbool susfs_is_current_proc_no_su(void) { return (current->susfs_task_state & (1ULL << 0)) != 0; }\nvoid susfs_set_current_proc_no_su(void) { current->susfs_task_state |= (1ULL << 0); }\nvoid susfs_clear_current_proc_no_su(void) { current->susfs_task_state &= ~(1ULL << 0); }\nvoid susfs_set_current_proc_umounted_for_zygote_next(void) { current->susfs_task_state |= (1ULL << 1); }\n' >> fs/susfs.c
+          echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
+          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/RM6785_defconfig
 
       - name: Clone Official Elohim AnyKernel3
         run: |
           git clone --depth=1 https://github.com/elohim-etz/AnyKernel3.git AnyKernel
 
-      - name: Build Kernel (Image.gz)
+      - name: Build Kernel
         run: |
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          export ARCH=arm64
+          export SUBARCH=arm64
+          export KBUILD_BUILD_USER="elohim-etz"
+          export KBUILD_BUILD_HOST="GitHub-Actions"
+
+          mkdir -p out
           make O=out ARCH=arm64 RM6785_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
+          
+          # Применяем BBR к .config
+          scripts/config --file out/.config --enable CONFIG_TCP_CONG_BBR
+          scripts/config --file out/.config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          
+          make -j$(nproc --all) \
+            O=out \
+            ARCH=arm64 \
+            CC="clang" \
+            LLVM=1 \
+            CONFIG_NO_ERROR_ON_MISMATCH=y \
+            Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
-          IMG=$(find kernel -name "Image.gz" | head -n 1)
-          echo "Found Image.gz: $IMG"
-          cp -f "$IMG" AnyKernel/Image.gz
+          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x ".git/*" -x "README.md"
+          TIMESTAMP=$(date +"%Y%m%d-%H%M")
+          ZIP_NAME="Yuri-RM6785-lineage24-BakaSU-BBR-${TIMESTAMP}.zip"
+          zip -r9 "../${ZIP_NAME}" . -x '*.git*' -x 'README.md'
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-BBR-ReSukiSU
-          path: Miku-RM6785-BBR-ReSukiSU.zip
+          name: Yuri-RM6785-lineage24-BakaSU-BBR
+          path: "*.zip"
+          retention-days: 7
