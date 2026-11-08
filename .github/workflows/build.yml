@@ -1,4 +1,4 @@
-name: Build Realme 6 Kernel (Lineage-24.0 BBR + ZSTD + ReSukiSU)
+name: Build Realme 6 Kernel (Lineage-24.0 BBR + ReSukiSU)
 
 on:
   workflow_dispatch:
@@ -26,28 +26,25 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
 
-      - name: Setup Latest Baka-SU (ReSukiSU) Driver
+      - name: Setup Official ReSukiSU Driver (Latest)
         run: |
           cd kernel
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash -
+          curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
 
       - name: Patch SECCOMP for Android 17 Syscall 142
         run: |
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Inject BBR, ZSTD & Optimizations into Defconfig
+      - name: Clean Defconfig Patch (BBR & FQ)
         run: |
           cd kernel
-          # Добавляем BBR и FQ Pacing прямо в дефконфиг
+          # Включаем BBR и FQ Pacing без конфликта с BIC
           echo "CONFIG_TCP_CONG_BBR=y" >> arch/arm64/configs/RM6785_defconfig
           echo "CONFIG_NET_SCH_FQ=y" >> arch/arm64/configs/RM6785_defconfig
           echo "CONFIG_NET_SCH_FQ_CODEL=y" >> arch/arm64/configs/RM6785_defconfig
-          echo 'CONFIG_DEFAULT_TCP_CONG="bbr"' >> arch/arm64/configs/RM6785_defconfig
-          # Добавляем современное сжатие ОЗУ ZSTD
-          echo "CONFIG_CRYPTO_ZSTD=y" >> arch/arm64/configs/RM6785_defconfig
-          echo "CONFIG_ZRAM_DEF_COMP_ZSTD=y" >> arch/arm64/configs/RM6785_defconfig
-          echo 'CONFIG_ZRAM_DEF_COMP="zstd"' >> arch/arm64/configs/RM6785_defconfig
+          sed -i 's/CONFIG_DEFAULT_BIC=y/CONFIG_DEFAULT_BBR=y/' arch/arm64/configs/RM6785_defconfig
+          sed -i 's/CONFIG_DEFAULT_TCP_CONG="bic"/CONFIG_DEFAULT_TCP_CONG="bbr"/' arch/arm64/configs/RM6785_defconfig
 
       - name: Clone Official Elohim AnyKernel3
         run: |
@@ -58,16 +55,22 @@ jobs:
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 RM6785_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz 2>&1 | tee ../build.log || {
+            echo "================ TOЧНАЯ ОШИБКА КОМПИЛЯЦИИ ================"
+            grep -E "error:|fatal error:" -B 2 -A 5 ../build.log | tail -n 50
+            echo "================ ПОСЛЕДНИЕ СТРОКИ ЛОГА ================"
+            tail -n 40 ../build.log
+            exit 1
+          }
 
       - name: Package AnyKernel3 Zip
         run: |
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-BBR-ZSTD-BakaSU.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x .git README.md
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Miku-RM6785-BBR-ZSTD-BakaSU
-          path: Miku-RM6785-BBR-ZSTD-BakaSU.zip
+          name: Miku-RM6785-BBR-ReSukiSU
+          path: Miku-RM6785-BBR-ReSukiSU.zip
