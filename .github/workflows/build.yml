@@ -30,16 +30,18 @@ jobs:
         run: |
           cd kernel
           curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh" | bash -
+          # Отключаем ошибочную проверку BakaSU (upstream bug #650)
+          echo "" > KernelSU/kernel/tools/static_export_check.mk
 
       - name: Patch SECCOMP for Android 17 Syscall 142
         run: |
           cd kernel
           sed -i 's/u32 ret = SECCOMP_RET_ALLOW;/u32 ret = SECCOMP_RET_ALLOW;\n\tif (sd \&\& sd->nr == 142) return SECCOMP_RET_ALLOW;/' kernel/seccomp.c
 
-      - name: Fix BakaSU Symbols & Enable BBR Internet
+      - name: Enable KALLSYMS & BBR Internet
         run: |
           cd kernel
-          # Включаем KALLSYMS_ALL (исправляет сбой компиляции Baka-SU)
+          # Включаем KALLSYMS_ALL
           sed -i 's/# CONFIG_KALLSYMS_ALL is not set/CONFIG_KALLSYMS_ALL=y/' arch/arm64/configs/RM6785_defconfig
           echo "CONFIG_KALLSYMS_ALL=y" >> arch/arm64/configs/RM6785_defconfig
 
