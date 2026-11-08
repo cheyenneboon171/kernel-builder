@@ -55,19 +55,15 @@ jobs:
           cd kernel
           export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
           make O=out ARCH=arm64 RM6785_defconfig
-          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz 2>&1 | tee ../build.log || {
-            echo "================ TOЧНАЯ ОШИБКА КОМПИЛЯЦИИ ================"
-            grep -E "error:|fatal error:" -B 2 -A 5 ../build.log | tail -n 50
-            echo "================ ПОСЛЕДНИЕ СТРОКИ ЛОГА ================"
-            tail -n 40 ../build.log
-            exit 1
-          }
+          make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 CONFIG_NO_ERROR_ON_MISMATCH=y Image.gz
 
       - name: Package AnyKernel3 Zip
         run: |
-          cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
+          IMG=$(find kernel -name "Image.gz" | head -n 1)
+          echo "Найден скомпилированный файл ядра: $IMG"
+          cp -f "$IMG" AnyKernel/Image.gz
           cd AnyKernel
-          zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x .git README.md
+          zip -r9 ../Miku-RM6785-BBR-ReSukiSU.zip * -x ".git/*" -x "README.md"
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
