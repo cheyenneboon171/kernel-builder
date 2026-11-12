@@ -1,4 +1,4 @@
-name: "Build Realme 6 Kernel (Lineage-24.0 BakaSU Manual Hooks + BBR)"
+name: "Build Realme 6 Kernel (Lineage-24.0 BakaSU + BBR + OMX Codec Fix)"
 
 on:
   workflow_dispatch:
@@ -25,6 +25,13 @@ jobs:
       - name: Clone Official Elohim Kernel Tree (lineage-24.0)
         run: |
           git clone --depth=1 https://github.com/elohim-etz/android_kernel_realme_mt6785.git -b lineage-24.0 kernel
+
+      - name: Revert Codec2 Port (Restore OMX mtk-vcodec & mtk-vcu ABI)
+        run: |
+          cd kernel
+          curl -sL https://github.com/elohim-etz/android_kernel_realme_mt6785/commit/1fdefec9.patch | git apply -R -v
+          curl -sL https://github.com/elohim-etz/android_kernel_realme_mt6785/commit/1a506083.patch | git apply -R -v
+          curl -sL https://github.com/elohim-etz/android_kernel_realme_mt6785/commit/06baf66a.patch | git apply -R -v
 
       - name: Apply Official Elohim Manual KSU Hooks & Full SELinux Exports
         run: |
@@ -93,12 +100,12 @@ jobs:
           cp -f kernel/out/arch/arm64/boot/Image.gz AnyKernel/Image.gz
           cd AnyKernel
           TIMESTAMP=$(date +"%Y%m%d-%H%M")
-          ZIP_NAME="Yuri-RM6785-lineage24-BakaSU-BBR-${TIMESTAMP}.zip"
+          ZIP_NAME="Yuri-RM6785-lineage24-BakaSU-BBR-OMX-${TIMESTAMP}.zip"
           zip -r9 "../${ZIP_NAME}" . -x '*.git*' -x 'README.md'
 
       - name: Upload Kernel Zip Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Yuri-RM6785-lineage24-BakaSU-BBR
+          name: Yuri-RM6785-lineage24-BakaSU-BBR-OMX
           path: "*.zip"
           retention-days: 7
